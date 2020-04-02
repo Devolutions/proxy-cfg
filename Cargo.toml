@@ -1,6 +1,7 @@
 [package]
 name = "proxy_cfg"
 version = "0.2.0"
+edition = "2018"
 authors = ["mattico8@gmail.com"]
 categories = ["network-programming", "os"]
 description = "A library to get proxy configuration from the OS."
@@ -26,7 +27,8 @@ env = []
 sysconfig_proxy = []
 
 [target."cfg(windows)".dependencies]
-winreg = "0.4"
+winapi = {version = "0.3.5", features = ["winnt", "winhttp"]}
+winreg = "0.7"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = "0.3.0"

@@ -58,8 +58,8 @@ pub fn get_proxy_config() -> Result<ProxyConfig> {
 }
 
 /// Returns the proxy to use for the given URL
+/// TODO: Note that Windows bypass list can specify '<local>' for all intranet addresses
 pub fn get_proxy_for_url(url: Url) -> Result<Url> {
-    use std::ascii::AsciiExt;
     // TODO: cache get_proxy_config result?
     match get_proxy_config() {
         Ok(config) => {
