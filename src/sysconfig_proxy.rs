@@ -32,8 +32,8 @@ fn get_proxy_config_from_file<P: AsRef<Path>>(config_file: P) -> Result<ProxyCon
         return Err(InvalidConfigError) //missing PROXY_ENABLED directive
     }
 
-    let mut proxies: HashMap<String,Url> = HashMap::new();
-    let mut whitelist: Vec<String> = Vec::new();
+    let mut proxies = HashMap::new();
+    let mut whitelist = Vec::new();
 
     // determine the proxies
     let schemes = [ "HTTP", "HTTPS", "FTP" ];
@@ -41,8 +41,7 @@ fn get_proxy_config_from_file<P: AsRef<Path>>(config_file: P) -> Result<ProxyCon
         let key = String::from(*scheme) + "_PROXY";
         if let Some(proxy) = map.get(&key) { //check if ${SCHEME}_PROXY is defined
             let scheme = scheme.to_lowercase();
-            let address_scheme = util::parse_addr_default_scheme(&scheme, &proxy)?;
-            proxies.insert(scheme.into(), address_scheme);
+            proxies.insert(scheme.into(), proxy.to_string());
         }
     }
 
@@ -83,7 +82,7 @@ fn get_proxy_config_from_file<P: AsRef<Path>>(config_file: P) -> Result<ProxyCon
 /// of a line. It is currently assumed that leading or trailing whitespace is
 /// not part of the file format.
 ///
-fn read_key_value_pairs_from_file<P: AsRef<Path>>(file: P) -> Result<HashMap<String,String>> {
+fn read_key_value_pairs_from_file<P: AsRef<Path>>(file: P) -> Result<HashMap<String, String>> {
     let mut result = HashMap::new();
     let file = File::open(file)?;
     let reader = BufReader::new(file);
@@ -174,10 +173,8 @@ PROXY_ENABLED="no""##);
 HTTPS_PROXY="https://1.2.3.4:8000"
 PROXY_ENABLED="yes""##);
         let config = get_proxy_config_from_file(file.path()).unwrap();
-        assert_eq!(config.proxies.get("http").unwrap(),
-                   &Url::parse("http://1.2.3.4").unwrap());
-        assert_eq!(config.proxies.get("https").unwrap(),
-                   &Url::parse("https://1.2.3.4:8000").unwrap());
+        assert_eq!(config.proxies.get("http").unwrap(), "http://1.2.3.4");
+        assert_eq!(config.proxies.get("https").unwrap(), "https://1.2.3.4:8000");
     }
 
     #[test]
@@ -220,9 +217,9 @@ FTP_PROXY="http://192.168.0.1"
 NO_PROXY="localhost, 127.0.0.1"
 "##);
     let config = get_proxy_config_from_file(file.path()).unwrap();
-    assert_eq!(config.proxies.get("http").unwrap(), &Url::parse("http://192.168.0.1").unwrap());
-    assert_eq!(config.proxies.get("https").unwrap(), &Url::parse("http://192.168.0.1").unwrap());
-    assert_eq!(config.proxies.get("ftp").unwrap(), &Url::parse("http://192.168.0.1").unwrap());
+    assert_eq!(config.proxies.get("http").unwrap(), "http://192.168.0.1");
+    assert_eq!(config.proxies.get("https").unwrap(), "http://192.168.0.1");
+    assert_eq!(config.proxies.get("ftp").unwrap(), "http://192.168.0.1");
     assert!(config.whitelist.contains(&"localhost".to_string()));
     assert!(config.whitelist.contains(&"127.0.0.1".to_string()));
     }

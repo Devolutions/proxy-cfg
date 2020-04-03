@@ -9,8 +9,6 @@ mod windows;
 
 #[cfg(target_os="macos")]
 pub mod macos;
-#[cfg(target_os="macos")]
-extern crate plist;
 
 #[cfg(feature = "env")]
 mod env;
@@ -27,7 +25,7 @@ use errors::ProxyConfigError::*;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProxyConfig {
-    pub proxies: HashMap<String, Url>,
+    pub proxies: HashMap<String, String>,
     pub whitelist: Vec<String>,
     __other_stuff: (),
 }
@@ -59,7 +57,7 @@ pub fn get_proxy_config() -> Result<ProxyConfig> {
 
 /// Returns the proxy to use for the given URL
 /// TODO: Note that Windows bypass list can specify '<local>' for all intranet addresses
-pub fn get_proxy_for_url(url: Url) -> Result<Url> {
+pub fn get_proxy_for_url(url: Url) -> Result<String> {
     // TODO: cache get_proxy_config result?
     match get_proxy_config() {
         Ok(config) => {
@@ -71,7 +69,7 @@ pub fn get_proxy_for_url(url: Url) -> Result<Url> {
             }
 
             if let Some(url) = config.proxies.get(url.scheme()) {
-                Ok(url.clone())
+                Ok(url.to_string())
             } else {
                 Err(NoProxyForSchemeError(url.scheme().to_string()))
             }

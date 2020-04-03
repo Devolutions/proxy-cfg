@@ -1,142 +1,80 @@
-extern crate serde_json;
+use std::ptr;
 
-use plist::Plist;
-use std::{
-    fs::File,
-    collections::HashMap,
-};
-use std::borrow::Borrow;
+use core_foundation::{ base::*, array::*, dictionary::*, string::*, number::* };
+use system_configuration_sys::dynamic_store_copy_specific;
 
 use super::*;
 
-#[derive(Debug)]
-pub struct ProxyConfigEx {
-    pub url: Url,
-    pub interface: String,
-    pub whitelist: String,
+fn get_array_value(dictionary: &CFDictionary<CFString, CFType>, key: &'static str) -> Option<CFArray> {
+    let key = CFString::from_static_string(key);
+    dictionary.find(key)
+        .and_then(|v| v.downcast::<CFArray>())
 }
 
-pub trait ProxyConfigReader {
-    fn read_proxy_config(&self) -> Option<Plist>;
+fn get_string_value(dictionary: &CFDictionary<CFString, CFType>, key: &'static str) -> Option<String> {
+    let key = CFString::from_static_string(key);
+    dictionary.find(key)
+        .and_then(|v| v.downcast::<CFString>()) 
+        .map(|v| v.to_string())
 }
 
-pub struct Reader {}
-
-impl ProxyConfigReader for Reader {
-    fn read_proxy_config(&self) -> Option<Plist> {
-        File::open("/Library/Preferences/SystemConfiguration/preferences.plist").ok()
-            .and_then(|file| Plist::read(file).ok())
-    }
-}
-
-pub fn get_proxy_config_ex(reader: &ProxyConfigReader) -> Result<Vec<ProxyConfigEx>> {
-
-    let plist = reader.read_proxy_config().ok_or(OsError)?;
-
-    if let Some(Plist::Dictionary(network_services)) = plist.as_dictionary()
-        .and_then(|decoded_data| decoded_data.get("NetworkServices")) {
-
-        let mut proxies = Vec::new();
-
-        // Extract proxy settings for all network interfaces.
-        for (_k,v) in network_services.iter() {
-
-            let proxy = v.as_dictionary().ok_or(InvalidConfigError)?
-                .get("Proxies").ok_or(InvalidConfigError)?
-                .as_dictionary().ok_or(InvalidConfigError)?;
-
-            for entry in proxy.keys() {
-                if entry.ends_with("Proxy") {
-                    // Ex: entry = "HTTPSProxy".
-                    let protocol = entry.replace("Proxy","");
-                    let scheme = &protocol.to_lowercase();
-                    if proxy.get(&format!("{}{}",protocol,"Enable"))
-                        == Some(&Plist::Integer(1)) {
-                        let mut interface = String::new();
-                        let mut whitelist = Vec::new();
-
-                        if let Some(Plist::Array(exceptions)) = proxy.get("ExceptionsList") {
-                            // Proxy exceptions can be different
-                            // for different network interfaces on MacOs.
-                            if let Some(Plist::String(user_defined_name)) = v
-                                .as_dictionary().ok_or(InvalidConfigError)?
-                                .get("UserDefinedName"){
-                                interface = user_defined_name.to_string();
-                                for exception in exceptions {
-                                    whitelist.push(
-                                        exception.as_string().ok_or(InvalidConfigError)?
-                                    )
-                                }
-                            }
-                        }
-
-                        proxies.push(
-                            ProxyConfigEx {
-                                url: util::parse_addr_default_scheme(
-                                    scheme,
-                                    &format!(
-                                        "{}:{}",
-                                        proxy.get(entry).ok_or(InvalidConfigError)?
-                                            .as_string().ok_or(InvalidConfigError)?,
-                                        proxy.get(
-                                            &format!("{}{}", protocol, "Port")
-                                        ).ok_or(InvalidConfigError)?
-                                            .as_integer().ok_or(InvalidConfigError)?
-                                    )
-                                )?,
-                                interface,
-                                whitelist:whitelist.join(",")
-                            }
-                        );
-                    } else {
-                        // Proxy for protocol is not enabled.
-                        continue
-                    }
-                }
-            }
-        }
-        return Ok(proxies)
-    }
-    Err(NoProxyConfiguredError)
+fn get_i32_value(dictionary: &CFDictionary<CFString, CFType>, key: &'static str) -> Option<i32> {
+    let key = CFString::from_static_string(key);
+    dictionary.find(key)
+        .and_then(|v| v.downcast::<CFNumber>())
+        .and_then(|v| v.to_i32())
 }
 
 pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
-    let reader: Box<ProxyConfigReader> = Box::new(Reader{});
-    let proxy_configs = get_proxy_config_ex(reader.borrow())?;
+    let proxies_ref = unsafe {
+        dynamic_store_copy_specific::SCDynamicStoreCopyProxies(ptr::null())
+    };
 
-    let mut proxies = HashMap::new();
-    let mut whitelist = Vec::new();
-    for proxy_config in proxy_configs {
-        proxies.insert(
-            proxy_config.url.scheme().to_string(),
-            proxy_config.url
-        );
-        whitelist.push(proxy_config.whitelist);
-    }
-    return Ok(ProxyConfig {
-        proxies,
-        whitelist,
-        ..Default::default()
-    });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    pub struct Test {}
-    impl ProxyConfigReader for Test {
-        fn read_proxy_config(&self) -> Option<Plist> {
-            File::open("src/test_data/preferences.plist").ok()
-                .and_then(|file| Plist::read(file).ok())
-        }
+    if proxies_ref.is_null() {
+        return Err(ProxyConfigError::NoProxyConfiguredError)
     }
 
-    #[test]
-    fn test_macos () {
-        let reader: Box<ProxyConfigReader> = Box::new(Test{});
-        let proxy_configs = &get_proxy_config_ex(reader.borrow()).unwrap()[0];
-        assert_eq!(proxy_configs.url, Url::parse("https://127.0.0.1:50001/").unwrap());
-        assert_eq!(proxy_configs.interface, "Thunderbolt Bridge");
-        assert_eq!(proxy_configs.whitelist, "*.local,169.254/16,123.0.0.1/15");
+    let proxies: CFDictionary<CFString, CFType> = unsafe { 
+        CFDictionary::wrap_under_create_rule(proxies_ref) 
+    };
+    proxies.show();
+    let mut proxy_config: ProxyConfig = Default::default();
+
+    if get_i32_value(&proxies, "HTTPEnable").unwrap_or(0) == 1 {
+        let mut url = get_string_value(&proxies, "HTTPProxy").unwrap_or_default();
+        if let Some(port) = get_i32_value(&proxies, "HTTPPort") {
+            url = format!("{}:{}", url, port);
+        } 
+
+        proxy_config.proxies.insert("http".into(), url);
     }
+
+    if get_i32_value(&proxies, "HTTPSEnable").unwrap_or(0) == 1 {
+        let mut url = get_string_value(&proxies, "HTTPSProxy").unwrap_or_default();
+        if let Some(port) = get_i32_value(&proxies, "HTTPSPort") {
+            url = format!("{}:{}", url, port);
+        } 
+
+        proxy_config.proxies.insert("https".into(), url);
+    }
+
+    if get_i32_value(&proxies, "FTPEnable").unwrap_or(0) == 1 {
+        let mut url = get_string_value(&proxies, "FTPProxy").unwrap_or_default();
+        if let Some(port) = get_i32_value(&proxies, "FTPPort") {
+            url = format!("{}:{}", url, port);
+        } 
+
+        proxy_config.proxies.insert("ftp".into(), url);
+        // TODO kSCPropNetProxiesFTPPassive
+    }
+
+    if let Some(exceptions_list) = get_array_value(&proxies, "ExceptionsList") {
+        let cf_strings = exceptions_list.iter().map(|ptr| {
+            unsafe { CFString::wrap_under_get_rule(CFStringRef::from_void_ptr(*ptr)) }
+        }).collect::<Vec<_>>();
+
+        proxy_config.whitelist.extend(cf_strings.iter().map(|s| s.to_string()));
+    }
+
+    Ok(proxy_config)
 }

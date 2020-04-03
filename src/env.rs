@@ -18,7 +18,7 @@ pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
                     }
                 }
             } else {
-                proxies.insert(scheme.into(), util::parse_addr_default_scheme(scheme, &value)?);
+                proxies.insert(scheme.into(), value);
             }
         }
     }
@@ -46,12 +46,12 @@ mod tests {
         env::set_var("NO_PROXY", "");
 
         let mut proxies = HashMap::new();
-        proxies.insert("http".into(), Url::parse("http://127.0.0.1").unwrap());
-        proxies.insert("https".into(), Url::parse("https://candybox2.github.io").unwrap());
-        proxies.insert("ftp".into(), Url::parse("http://9-eyes.com").unwrap());
+        proxies.insert("http".into(), "127.0.0.1".to_string());
+        proxies.insert("https".into(), "candybox2.github.io".to_string());
+        proxies.insert("ftp".into(), "http://9-eyes.com".to_string());
 
         let env_var_proxies = get_proxy_config().unwrap().proxies;
-        if env_var_proxies.capacity() != 4 {
+        if env_var_proxies.len() != 3 {
             // Other proxies are present on the host machine.
             for (k,..) in proxies.iter() {
                 assert_eq!(env_var_proxies.get(k), proxies.get(k));
@@ -70,7 +70,6 @@ mod tests {
 
         assert_eq!(get_proxy_for_url(Url::parse("http://google.com").unwrap()).ok(), None);
         assert_eq!(get_proxy_for_url(Url::parse("https://localhost").unwrap()).ok(), None);
-        assert_eq!(get_proxy_for_url(Url::parse("https://bitbucket.org").unwrap()).unwrap(), 
-            Url::parse("https://candybox2.github.io").unwrap());
+        assert_eq!(get_proxy_for_url(Url::parse("https://bitbucket.org").unwrap()).unwrap(), "candybox2.github.io");
     }
 }
