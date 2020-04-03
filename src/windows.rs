@@ -38,7 +38,7 @@ fn parse_bypass_list(bypass_list: &str) -> Vec<String> {
 
 // Proxy list is semi-colon or whitespace delimited, in this format:
 // ([<scheme>=][<scheme>"://"]<server>[":"<port>])
-fn parse_proxy_list(proxy_list: &str) -> HashMap<String, Url> {
+fn parse_proxy_list(proxy_list: &str) -> HashMap<String, String> {
     let mut result = HashMap::new();
 
     let proxies = proxy_list.split(&[' ', ';'][..])
@@ -49,13 +49,9 @@ fn parse_proxy_list(proxy_list: &str) -> HashMap<String, Url> {
         let split: Vec<&str> = proxy.split('=').collect();
 
         if split.len() == 1 {
-            if let Ok(url) = util::parse_addr_default_scheme("http", &proxy) {
-                result.insert("http".into(), url);
-            }
+            result.insert("http".into(), split[0].into());
         } else if split.len() == 2 {
-            if let Ok(url) = util::parse_addr_default_scheme(split[0], split[1]) {
-                result.insert(split[0].into(), url);
-            }
+            result.insert(split[0].into(), split[1].into());
         }
     }
 
@@ -199,16 +195,16 @@ fn parse_exceptions_test() {
 fn parse_proxies_test() {
     let hm = parse_proxy_list("http=1.2.3.4:80");
     assert_eq!(1, hm.len());
-    assert_eq!(&Url::parse("http://1.2.3.4:80").unwrap(), hm.get("http").unwrap());
+    assert_eq!("1.2.3.4:80", hm.get("http").unwrap());
 
-    let hm = parse_proxy_list("1.2.3.4;https=8.8.8.8");
+    let hm = parse_proxy_list("1.2.3.4;https=http://8.8.8.8");
     assert_eq!(2, hm.len());
-    assert_eq!(&Url::parse("http://1.2.3.4").unwrap(), hm.get("http").unwrap());
-    assert_eq!(&Url::parse("https://8.8.8.8").unwrap(), hm.get("https").unwrap());
+    assert_eq!("1.2.3.4", hm.get("http").unwrap());
+    assert_eq!("http://8.8.8.8", hm.get("https").unwrap());
 
     let hm = parse_proxy_list("http://1.2.3.4;https=8.8.8.8   http=9.8.7.6:123");
     assert_eq!(2, hm.len());
-    assert_eq!(&Url::parse("http://9.8.7.6:123").unwrap(), hm.get("http").unwrap());
+    assert_eq!("9.8.7.6:123", hm.get("http").unwrap());
 }
 
 pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {

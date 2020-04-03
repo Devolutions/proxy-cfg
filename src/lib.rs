@@ -17,7 +17,6 @@ mod env;
 mod sysconfig_proxy;
 
 mod errors;
-mod util;
 
 pub use errors::ProxyConfigError;
 use errors::*;
