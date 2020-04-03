@@ -12,8 +12,7 @@ use std::io::{BufRead,BufReader};
 use super::*;
 
 /// Extract proxy information from /etc/sysconfig/proxy if the file is available
-/// and formatted correctly. If the file is not available or if there are any
-/// other IO errors, an ConfigurationNotReadableError error will be returned.
+/// and formatted correctly.
 pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
     get_proxy_config_from_file("/etc/sysconfig/proxy")
 }
