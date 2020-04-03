@@ -32,7 +32,7 @@ fn parse_bypass_list(bypass_list: &str) -> Vec<String> {
     bypass_list.split(&[' ', ';'][..])
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(|s| s.into().to_lowercase())
+        .map(|s| s.to_string().to_lowercase())
         .collect()
 }
 
@@ -205,7 +205,11 @@ pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
         return Ok(proxy_config)
     }
 
-    win_http_get_default_config().ok_or(Default::default())
+    if let Some(proxy_config) = win_http_get_default_config() {
+        return Ok(proxy_config)
+    }
+
+    Ok(Default::default())
 }
 
 #[cfg(test)]
