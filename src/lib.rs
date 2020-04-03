@@ -29,14 +29,32 @@ pub struct ProxyConfig {
 }
 
 impl ProxyConfig {
-/// Returns the proxy to use for the given URL
     pub fn get_proxy_for_url(&self, url: Url) -> Option<String> {
-        // TODO Pattern match
-        if self.whitelist.contains(&url.host_str().unwrap_or_default().to_lowercase()) {
+        let host = match url.host_str() {
+            Some(host) => host.to_lowercase(),
+            None => return None,
+        };
+
+        if self.exclude_simple && !host.chars().any(|c| c == '.') {
             return None
         }
 
-        self.proxies.get(url.scheme()).map(|s| s.to_string())
+        if self.whitelist.contains(&host) {
+            return None
+        }
+
+        // TODO: Wildcard matches on IP address, e.g. 192.168.*.*
+        // TODO: Subnet matches on IP address, e.g. 192.168.16.0/24
+
+        if self.whitelist.iter().any(|s| {
+            if let Some(pos) = s.rfind('*') {
+                let slice = &s[pos + 1..];
+                return slice.len() > 0 && host.ends_with(slice)
+            }
+            false 
+        }) { return None }
+
+        self.proxies.get(url.scheme()).map(|s| s.to_string().to_lowercase())
     }
 }
 
@@ -68,6 +86,18 @@ pub fn get_proxy_config() -> Result<ProxyConfig> {
 mod tests {
     use super::*;
 
+    macro_rules! map(
+        { $($key:expr => $value:expr),+ } => {
+            {
+                let mut m = ::std::collections::HashMap::new();
+                $(
+                    m.insert($key, $value);
+                )+
+                m
+            }
+         };
+    );
+
     #[test]
     fn smoke_test_get_proxies() {
         let _ = get_proxy_config();
@@ -77,5 +107,30 @@ mod tests {
     fn smoke_test_get_proxy_for_url() {
         let proxy_config = get_proxy_config().unwrap();
         let _ = proxy_config.get_proxy_for_url(Url::parse("https://google.com").unwrap());
+    }
+
+    #[test]
+    fn test_get_proxy_for_url() {
+        let proxy_config = ProxyConfig { 
+            proxies: map!{ 
+                "http".into() => "1.1.1.1".into(), 
+                "https".into() => "2.2.2.2".into() 
+            },
+            whitelist: vec![
+                "www.devolutions.net", 
+                "*.microsoft.com", 
+                "*apple.com"
+            ].into_iter().map(|s| s.to_string()).collect(),
+            exclude_simple: true,
+            ..Default::default() 
+        };
+
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://simpledomain").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://simple.domain").unwrap()), Some("1.1.1.1".into()));
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://www.devolutions.net").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://www.microsoft.com").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://www.microsoft.com.fun").unwrap()), Some("1.1.1.1".into()));
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://test.apple.com").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("https://test.apple.net").unwrap()), Some("2.2.2.2".into()));
     }
 }
