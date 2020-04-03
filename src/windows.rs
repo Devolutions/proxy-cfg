@@ -118,7 +118,7 @@ fn win_inet_get_proxy_config(internet_settings: RegKey) -> Option<ProxyConfig> {
             proxy_config.whitelist.extend(bypass_list);
         }
 
-        if whitelist.contains("<local>") {
+        if proxy_config.whitelist.contains("<local>") {
             proxy_config.exclude_simple = true;
         }
 
@@ -185,7 +185,7 @@ fn win_http_get_default_config() -> Option<ProxyConfig> {
         proxy_config.whitelist.extend(bypass_list);
     }
 
-    if whitelist.contains("<local>") {
+    if proxy_config.whitelist.contains("<local>") {
         proxy_config.exclude_simple = true;
     }
     
