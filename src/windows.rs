@@ -32,7 +32,7 @@ fn parse_bypass_list(bypass_list: &str) -> Vec<String> {
     bypass_list.split(&[' ', ';'][..])
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(|s| s.into())
+        .map(|s| s.into().to_lowercase())
         .collect()
 }
 
@@ -192,29 +192,6 @@ fn win_http_get_default_config() -> Option<ProxyConfig> {
     Some(proxy_config)
 }
 
-#[test]
-fn parse_exceptions_test() {
-    let bypass_list = "  <local>;.microsoft.com  ;  192.168.*.* 172.16.10.*";
-    let parsed = parse_bypass_list(bypass_list);
-    assert_eq!(parsed, vec!["<local>", ".microsoft.com", "192.168.*.*", "172.16.10.*"])
-}
-
-#[test]
-fn parse_proxies_test() {
-    let hm = parse_proxy_list("http=1.2.3.4:80");
-    assert_eq!(1, hm.len());
-    assert_eq!("1.2.3.4:80", hm.get("http").unwrap());
-
-    let hm = parse_proxy_list("1.2.3.4;https=http://8.8.8.8");
-    assert_eq!(2, hm.len());
-    assert_eq!("1.2.3.4", hm.get("http").unwrap());
-    assert_eq!("http://8.8.8.8", hm.get("https").unwrap());
-
-    let hm = parse_proxy_list("http://1.2.3.4;https=8.8.8.8   http=9.8.7.6:123");
-    assert_eq!(2, hm.len());
-    assert_eq!("9.8.7.6:123", hm.get("http").unwrap());
-}
-
 pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
     let win_inet_user_proxy = win_inet_get_current_user_config();
 
@@ -228,5 +205,33 @@ pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
         return Ok(proxy_config)
     }
 
-    win_http_get_default_config().ok_or(ProxyConfigError::NoProxyConfiguredError)
+    win_http_get_default_config().ok_or(Default::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_exceptions_test() {
+        let bypass_list = "  <local>;.microsoft.com  ;  192.168.*.* 172.16.10.*";
+        let parsed = parse_bypass_list(bypass_list);
+        assert_eq!(parsed, vec!["<local>", ".microsoft.com", "192.168.*.*", "172.16.10.*"])
+    }
+    
+    #[test]
+    fn parse_proxies_test() {
+        let hm = parse_proxy_list("http=1.2.3.4:80");
+        assert_eq!(1, hm.len());
+        assert_eq!("1.2.3.4:80", hm.get("http").unwrap());
+    
+        let hm = parse_proxy_list("1.2.3.4;https=http://8.8.8.8");
+        assert_eq!(2, hm.len());
+        assert_eq!("1.2.3.4", hm.get("http").unwrap());
+        assert_eq!("http://8.8.8.8", hm.get("https").unwrap());
+    
+        let hm = parse_proxy_list("http://1.2.3.4;https=8.8.8.8   http=9.8.7.6:123");
+        assert_eq!(2, hm.len());
+        assert_eq!("9.8.7.6:123", hm.get("http").unwrap());
+    }
 }

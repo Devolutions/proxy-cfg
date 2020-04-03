@@ -30,15 +30,15 @@ pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
         dynamic_store_copy_specific::SCDynamicStoreCopyProxies(ptr::null())
     };
 
+    let mut proxy_config: ProxyConfig = Default::default();
+
     if proxies_ref.is_null() {
-        return Err(ProxyConfigError::NoProxyConfiguredError)
+        return Ok(proxy_config)
     }
 
     let proxies: CFDictionary<CFString, CFType> = unsafe { 
         CFDictionary::wrap_under_create_rule(proxies_ref) 
     };
-    proxies.show();
-    let mut proxy_config: ProxyConfig = Default::default();
 
     if get_i32_value(&proxies, "HTTPEnable").unwrap_or(0) == 1 {
         let mut url = get_string_value(&proxies, "HTTPProxy").unwrap_or_default();
@@ -77,7 +77,7 @@ pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
             unsafe { CFString::wrap_under_get_rule(CFStringRef::from_void_ptr(*ptr)) }
         }).collect::<Vec<_>>();
 
-        proxy_config.whitelist.extend(cf_strings.iter().map(|s| s.to_string()));
+        proxy_config.whitelist.extend(cf_strings.iter().map(|s| s.to_string().to_lowercase()));
     }
 
     Ok(proxy_config)

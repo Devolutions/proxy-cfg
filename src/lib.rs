@@ -1,5 +1,3 @@
-extern crate url;
-
 use std::collections::{HashMap, HashSet};
 
 use url::Url;
@@ -8,7 +6,7 @@ use url::Url;
 mod windows;
 
 #[cfg(target_os="macos")]
-pub mod macos;
+mod macos;
 
 #[cfg(feature = "env")]
 mod env;
@@ -18,9 +16,9 @@ mod sysconfig_proxy;
 
 mod errors;
 
-pub use errors::ProxyConfigError;
-use errors::*;
-use errors::ProxyConfigError::*;
+use errors::Error;
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProxyConfig {
@@ -28,6 +26,18 @@ pub struct ProxyConfig {
     pub whitelist: HashSet<String>,
     pub exclude_simple: bool,
     __other_stuff: (),
+}
+
+impl ProxyConfig {
+/// Returns the proxy to use for the given URL
+    pub fn get_proxy_for_url(&self, url: Url) -> Option<String> {
+        // TODO Pattern match
+        if self.whitelist.contains(&url.host_str().unwrap_or_default().to_lowercase()) {
+            return None
+        }
+
+        self.proxies.get(url.scheme()).map(|s| s.to_string())
+    }
 }
 
 type ProxyFn = fn() -> Result<ProxyConfig>;
@@ -43,9 +53,8 @@ const METHODS: &[&ProxyFn] = &[
     &(macos::get_proxy_config as ProxyFn),
 ];
 
-/// Returns a vector of URLs for the proxies configured by the system
 pub fn get_proxy_config() -> Result<ProxyConfig> {
-    let mut last_err = PlatformNotSupportedError;
+    let mut last_err = Error::PlatformNotSupported;
     for get_proxy_config in METHODS {
         match get_proxy_config() {
             Ok(config) => return Ok(config),
@@ -53,29 +62,6 @@ pub fn get_proxy_config() -> Result<ProxyConfig> {
         }
     }
     Err(last_err)
-}
-
-/// Returns the proxy to use for the given URL
-/// TODO: Note that Windows bypass list can specify '<local>' for all intranet addresses
-pub fn get_proxy_for_url(url: Url) -> Result<String> {
-    // TODO: cache get_proxy_config result?
-    match get_proxy_config() {
-        Ok(config) => {
-            for domain in config.whitelist {
-                // TODO: make this more robust
-                if url.domain().unwrap().eq_ignore_ascii_case(&domain) {
-                    return Err(NoProxyNeededError);
-                }
-            }
-
-            if let Some(url) = config.proxies.get(url.scheme()) {
-                Ok(url.to_string())
-            } else {
-                Err(NoProxyForSchemeError(url.scheme().to_string()))
-            }
-        },
-        Err(e) => Err(e),
-    }
 }
 
 #[cfg(test)]
@@ -89,6 +75,7 @@ mod tests {
 
     #[test]
     fn smoke_test_get_proxy_for_url() {
-        let _ = get_proxy_for_url(Url::parse("https://google.com").unwrap());
+        let proxy_config = get_proxy_config().unwrap();
+        let _ = proxy_config.get_proxy_for_url(Url::parse("https://google.com").unwrap());
     }
 }

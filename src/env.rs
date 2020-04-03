@@ -4,34 +4,25 @@ use std::env;
 
 pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
     let vars: Vec<(String, String)> = env::vars().collect();
-    let mut proxies = HashMap::new();
-    let mut whitelist = HashSet::new();
+    let mut proxy_config: ProxyConfig = Default::default();
 
     for (key, value) in vars {
         let key = key.to_lowercase();
         if key.ends_with("_proxy") {
-            let scheme = &key[..key.len()-6];
+            let scheme = &key[..key.len() - 6];
             if scheme == "no" {
                 for url in value.split(",").map(|s| s.trim()) {
                     if url.len() > 0 {
-                        whitelist.insert(url.into());
+                        proxy_config.whitelist.insert(url.to_string().to_lowercase());
                     }
                 }
             } else {
-                proxies.insert(scheme.into(), value);
+                proxy_config.proxies.insert(scheme.into(), value);
             }
         }
     }
 
-    if proxies.is_empty() {
-        Err(NoProxyConfiguredError)
-    } else {
-        Ok(ProxyConfig {
-            proxies,
-            whitelist,
-            ..Default::default()
-        })
-    }
+    Ok(proxy_config)
 }
 
 #[cfg(test)]
@@ -68,8 +59,10 @@ mod tests {
         env::set_var("FTP_PROXY", "http://9-eyes.com");
         env::set_var("NO_PROXY", "google.com, 192.168.0.1, localhost, https://github.com/");
 
-        assert_eq!(get_proxy_for_url(Url::parse("http://google.com").unwrap()).ok(), None);
-        assert_eq!(get_proxy_for_url(Url::parse("https://localhost").unwrap()).ok(), None);
-        assert_eq!(get_proxy_for_url(Url::parse("https://bitbucket.org").unwrap()).unwrap(), "candybox2.github.io");
+        let proxy_config = get_proxy_config().unwrap();
+
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://google.com").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("https://localhost").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("https://bitbucket.org").unwrap()).unwrap(), "candybox2.github.io");
     }
 }

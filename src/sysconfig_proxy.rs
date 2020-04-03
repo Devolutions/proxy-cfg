@@ -13,7 +13,7 @@ use super::*;
 
 /// Extract proxy information from /etc/sysconfig/proxy if the file is available
 /// and formatted correctly. If the file is not available or if there are any
-/// other IO erros, an ConfigurationNotReadableError error will be returned.
+/// other IO errors, an ConfigurationNotReadableError error will be returned.
 pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
     get_proxy_config_from_file("/etc/sysconfig/proxy")
 }
@@ -21,19 +21,17 @@ pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
 /// The same as get_proxy_config() but this function expects a file's path as an
 /// argument.
 fn get_proxy_config_from_file<P: AsRef<Path>>(config_file: P) -> Result<ProxyConfig> {
+    let mut proxy_config: ProxyConfig = Default::default();
     let map = read_key_value_pairs_from_file(config_file)?;
     if let Some(enabled) = map.get("PROXY_ENABLED") {
         match enabled.as_str() {
             "yes" => (), //continue running this function
-            "no"  => return Err(NoProxyNeededError),
-            _ => return Err(InvalidConfigError), //consider all other values as illegal
+            "no"  => return Ok(proxy_config),
+            _ => return Err(Error::InvalidConfig), //consider all other values as illegal
         }
     } else {
-        return Err(InvalidConfigError) //missing PROXY_ENABLED directive
+        return Err(Error::InvalidConfig) //missing PROXY_ENABLED directive
     }
-
-    let mut proxies = HashMap::new();
-    let mut whitelist = HashSet::new();
 
     // determine the proxies
     let schemes = [ "HTTP", "HTTPS", "FTP" ];
@@ -41,26 +39,18 @@ fn get_proxy_config_from_file<P: AsRef<Path>>(config_file: P) -> Result<ProxyCon
         let key = String::from(*scheme) + "_PROXY";
         if let Some(proxy) = map.get(&key) { //check if ${SCHEME}_PROXY is defined
             let scheme = scheme.to_lowercase();
-            proxies.insert(scheme.into(), proxy.to_string());
+            proxy_config.proxies.insert(scheme.into(), proxy.to_string());
         }
     }
 
     // determine the list of domains that should not be requested through the proxy
     if let Some(no_proxy) = map.get("NO_PROXY") {
         for no_proxy_url in no_proxy.split(",") {
-            whitelist.insert(no_proxy_url.trim().into());
+            proxy_config.whitelist.insert(no_proxy_url.trim().to_string().to_lowercase());
         }
     }
 
-    if proxies.is_empty() {
-        Err(NoProxyConfiguredError)
-    } else {
-        Ok(ProxyConfig {
-           proxies,
-           whitelist,
-           ..Default::default()
-        })
-    }
+    Ok(proxy_config)
 }
 
 /// Read a file which contains key-value pairs that are separated by an equals
@@ -98,7 +88,7 @@ fn read_key_value_pairs_from_file<P: AsRef<Path>>(file: P) -> Result<HashMap<Str
             let value = strip_after_quote(&line[pos+2..]).to_string();
             result.insert(key,value);
         } else { //there has to be an equals sign in this file.
-            return Err(InvalidConfigError)
+            return Err(Error::InvalidConfig)
         }
     }
 
@@ -121,7 +111,6 @@ mod tests {
     use super::*;
     use std::io::{Write};
     use self::tempfile::NamedTempFile;
-
 
     /// write a string to a temporary file
     fn spit(contents: &str) -> NamedTempFile {
@@ -159,15 +148,13 @@ spam="eggs"
     fn test_get_proxy_config() {
         let file = spit(r##"HTTP_PROXY="http://1.2.3.4"
 HTTPS_PROXY="https://1.2.3.4:8000""##);
-        assert_eq!(get_proxy_config_from_file(file.path()),
-                   Err(InvalidConfigError)); //missing PROXY_enabled
+        assert!(get_proxy_config_from_file(file.path()).is_err()); //missing PROXY_enabled
 
         let file = spit(
 r##"HTTP_PROXY="http://1.2.3.4"
 HTTPS_PROXY="https://1.2.3.4:8000"
 PROXY_ENABLED="no""##);
-        assert_eq!(get_proxy_config_from_file(file.path()),
-                   Err(NoProxyNeededError));
+        assert!(get_proxy_config_from_file(file.path()).is_ok());
 
         let file = spit(r##"HTTP_PROXY="http://1.2.3.4"
 HTTPS_PROXY="https://1.2.3.4:8000"
@@ -229,7 +216,7 @@ NO_PROXY="localhost, 127.0.0.1"
         let file = spit(r##"PROXY_ENABLED="yes"
 HTTP_PROXY=http://localhost"##);
         match  get_proxy_config_from_file(file.path()) {
-            Err(InvalidConfigError) => (), //all is fine
+            Err(_) => (), //all is fine
             _ => assert!(false)
         }
     }

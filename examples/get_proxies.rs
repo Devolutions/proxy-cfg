@@ -1,6 +1,3 @@
-extern crate proxy_cfg;
-extern crate url;
-
 use proxy_cfg::*;
 use url::Url;
 
@@ -23,11 +20,15 @@ fn main() {
         };
     } else {
         for arg in args {
-            match get_proxy_for_url(Url::parse(&arg).unwrap()) {
-                Ok(proxy) => println!("{} : {}", arg, proxy),
-                Err(ProxyConfigError::NoProxyNeededError) => println!("No proxy needed for URL: '{}'", arg),
+            match get_proxy_config() {
+                Ok(proxy_config) => {
+                    match proxy_config.get_proxy_for_url(Url::parse(&arg).unwrap()) {
+                        Some(proxy) => println!("{} : {}", arg, proxy),
+                        None => println!("No proxy needed for URL: '{}'", arg),
+                    }
+                },
                 Err(e) => {
-                    println!("Error getting proxy for URL '{}': {}", arg, e);
+                    println!("Error getting proxies: {:?}", e);
                     process::exit(1);
                 },
             }
