@@ -33,7 +33,7 @@ fn get_proxy_config_from_file<P: AsRef<Path>>(config_file: P) -> Result<ProxyCon
     }
 
     let mut proxies = HashMap::new();
-    let mut whitelist = Vec::new();
+    let mut whitelist = HashSet::new();
 
     // determine the proxies
     let schemes = [ "HTTP", "HTTPS", "FTP" ];
@@ -48,7 +48,7 @@ fn get_proxy_config_from_file<P: AsRef<Path>>(config_file: P) -> Result<ProxyCon
     // determine the list of domains that should not be requested through the proxy
     if let Some(no_proxy) = map.get("NO_PROXY") {
         for no_proxy_url in no_proxy.split(",") {
-            whitelist.push(no_proxy_url.trim().into())
+            whitelist.insert(no_proxy_url.trim().into());
         }
     }
 

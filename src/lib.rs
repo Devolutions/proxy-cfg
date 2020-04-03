@@ -1,6 +1,6 @@
 extern crate url;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use url::Url;
 
@@ -25,7 +25,8 @@ use errors::ProxyConfigError::*;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProxyConfig {
     pub proxies: HashMap<String, String>,
-    pub whitelist: Vec<String>,
+    pub whitelist: HashSet<String>,
+    pub exclude_simple: bool,
     __other_stuff: (),
 }
 

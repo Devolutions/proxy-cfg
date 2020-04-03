@@ -68,6 +68,10 @@ pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
         // TODO kSCPropNetProxiesFTPPassive
     }
 
+    if get_i32_value(&proxies, "ExcludeSimpleHostnames").unwrap_or(0) == 1 {
+        proxy_config.exclude_simple = true;
+    }
+
     if let Some(exceptions_list) = get_array_value(&proxies, "ExceptionsList") {
         let cf_strings = exceptions_list.iter().map(|ptr| {
             unsafe { CFString::wrap_under_get_rule(CFStringRef::from_void_ptr(*ptr)) }
@@ -77,4 +81,9 @@ pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
     }
 
     Ok(proxy_config)
+}
+
+#[test]
+fn get_proxy_config_test() {
+    let _ = get_proxy_config();
 }

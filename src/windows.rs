@@ -118,6 +118,10 @@ fn win_inet_get_proxy_config(internet_settings: RegKey) -> Option<ProxyConfig> {
             proxy_config.whitelist.extend(bypass_list);
         }
 
+        if whitelist.contains("<local>") {
+            proxy_config.exclude_simple = true;
+        }
+
         return Some(proxy_config)
     }
 
@@ -179,6 +183,10 @@ fn win_http_get_default_config() -> Option<ProxyConfig> {
     if let Some(proxy_bypass) = proxy_bypass {
         let bypass_list = parse_bypass_list(&proxy_bypass);
         proxy_config.whitelist.extend(bypass_list);
+    }
+
+    if whitelist.contains("<local>") {
+        proxy_config.exclude_simple = true;
     }
     
     Some(proxy_config)

@@ -5,7 +5,7 @@ use std::env;
 pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
     let vars: Vec<(String, String)> = env::vars().collect();
     let mut proxies = HashMap::new();
-    let mut whitelist = Vec::new();
+    let mut whitelist = HashSet::new();
 
     for (key, value) in vars {
         let key = key.to_lowercase();
@@ -14,7 +14,7 @@ pub(crate) fn get_proxy_config() -> Result<ProxyConfig> {
             if scheme == "no" {
                 for url in value.split(",").map(|s| s.trim()) {
                     if url.len() > 0 {
-                        whitelist.push(url.into());
+                        whitelist.insert(url.into());
                     }
                 }
             } else {
