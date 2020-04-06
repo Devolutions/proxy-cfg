@@ -21,6 +21,9 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
 /// argument.
 fn get_proxy_config_from_file<P: AsRef<Path>>(config_file: P) -> Result<Option<ProxyConfig>> {
     let mut proxy_config: ProxyConfig = Default::default();
+    if !config_file.as_ref().exists() {
+        return Ok(None)
+    }
     let map = read_key_value_pairs_from_file(config_file)?;
     if let Some(enabled) = map.get("PROXY_ENABLED") {
         match enabled.as_str() {

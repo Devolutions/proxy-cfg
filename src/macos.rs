@@ -68,6 +68,10 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
         // TODO kSCPropNetProxiesFTPPassive
     }
 
+    if proxy_config.proxies.len() == 0 {
+        return Ok(None)
+    }
+
     if get_i32_value(&proxies, "ExcludeSimpleHostnames").unwrap_or(0) == 1 {
         proxy_config.exclude_simple = true;
     }
