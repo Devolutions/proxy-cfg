@@ -29,7 +29,7 @@ pub struct ProxyConfig {
 }
 
 impl ProxyConfig {
-    pub fn get_proxy_for_url(&self, url: Url) -> Option<String> {
+    pub fn get_proxy_for_url(&self, url: &Url) -> Option<String> {
         let host = match url.host_str() {
             Some(host) => host.to_lowercase(),
             None => return None,
@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn smoke_test_get_proxy_for_url() {
         if let Some(proxy_config) = get_proxy_config().unwrap() {
-            let _ = proxy_config.get_proxy_for_url(Url::parse("https://google.com").unwrap());
+            let _ = proxy_config.get_proxy_for_url(&Url::parse("https://google.com").unwrap());
         }
     }
 
@@ -136,12 +136,12 @@ mod tests {
             ..Default::default() 
         };
 
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://simpledomain").unwrap()), None);
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://simple.domain").unwrap()), Some("1.1.1.1".into()));
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://www.devolutions.net").unwrap()), None);
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://www.microsoft.com").unwrap()), None);
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://www.microsoft.com.fun").unwrap()), Some("1.1.1.1".into()));
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://test.apple.com").unwrap()), None);
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("https://test.apple.net").unwrap()), Some("2.2.2.2".into()));
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("http://simpledomain").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("http://simple.domain").unwrap()), Some("1.1.1.1".into()));
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("http://www.devolutions.net").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("http://www.microsoft.com").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("http://www.microsoft.com.fun").unwrap()), Some("1.1.1.1".into()));
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("http://test.apple.com").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("https://test.apple.net").unwrap()), Some("2.2.2.2".into()));
     }
 }

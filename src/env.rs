@@ -65,8 +65,8 @@ mod tests {
 
         let proxy_config = get_proxy_config().unwrap().unwrap();
 
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("http://google.com").unwrap()), None);
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("https://localhost").unwrap()), None);
-        assert_eq!(proxy_config.get_proxy_for_url(Url::parse("https://bitbucket.org").unwrap()).unwrap(), "candybox2.github.io");
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("http://google.com").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("https://localhost").unwrap()), None);
+        assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("https://bitbucket.org").unwrap()).unwrap(), "candybox2.github.io");
     }
 }

@@ -23,7 +23,7 @@ fn main() {
         for arg in args {
             match get_proxy_config() {
                 Ok(Some(proxy_config)) => {
-                    match proxy_config.get_proxy_for_url(Url::parse(&arg).unwrap()) {
+                    match proxy_config.get_proxy_for_url(&Url::parse(&arg).unwrap()) {
                         Some(proxy) => println!("{} : {}", arg, proxy),
                         None => println!("No proxy needed for URL: '{}'", arg),
                     }
