@@ -29,18 +29,18 @@ pub struct ProxyConfig {
 }
 
 impl ProxyConfig {
-    pub fn get_proxy_for_url(&self, url: &Url) -> Option<String> {
+    pub fn use_proxy_for_url(&self, url: &Url) -> bool {
         let host = match url.host_str() {
             Some(host) => host.to_lowercase(),
-            None => return None,
+            None => return false,
         };
 
         if self.exclude_simple && !host.chars().any(|c| c == '.') {
-            return None
+            return false
         }
 
         if self.whitelist.contains(&host) {
-            return None
+            return false
         }
 
         // TODO: Wildcard matches on IP address, e.g. 192.168.*.*
@@ -52,9 +52,16 @@ impl ProxyConfig {
                 return slice.len() > 0 && host.ends_with(slice)
             }
             false 
-        }) { return None }
+        }) { return false }
 
-        self.proxies.get(url.scheme()).map(|s| s.to_string().to_lowercase())
+        true
+    }
+
+    pub fn get_proxy_for_url(&self, url: &Url) -> Option<String> {
+        match self.use_proxy_for_url(url) {
+            true => self.proxies.get(url.scheme()).map(|s| s.to_string().to_lowercase()),
+            false => None,
+        }
     }
 }
 

@@ -51,7 +51,7 @@ fn parse_proxy_list(proxy_list: &str) -> HashMap<String, String> {
         if split.len() == 1 {
             result.insert("http".into(), split[0].into());
         } else if split.len() == 2 {
-            result.insert(split[0].into(), split[1].into());
+            result.insert(split[0].to_string().to_lowercase(), split[1].into());
         }
     }
 

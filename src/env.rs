@@ -17,7 +17,7 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
                     }
                 }
             } else {
-                proxy_config.proxies.insert(scheme.into(), value);
+                proxy_config.proxies.insert(scheme.to_string().to_lowercase(), value);
             }
         }
     }
