@@ -29,8 +29,13 @@ pub struct ProxyConfig {
 }
 
 impl ProxyConfig {
-    pub fn use_proxy_for_host(&self, host: &str) -> bool {
-        let host = host.to_lowercase();
+    pub fn use_proxy_for_address(&self, address: &str) -> bool {
+        let mut host = address.to_lowercase();
+        if let Ok(url) = Url::parse(address) {
+            if let Some(url_host) = url.host() {
+                 host = url_host.to_string().to_lowercase();
+            }
+        }
 
         if self.exclude_simple && !host.chars().any(|c| c == '.') {
             return false
@@ -55,12 +60,7 @@ impl ProxyConfig {
     }
 
     pub fn get_proxy_for_url(&self, url: &Url) -> Option<String> {
-        let host = match url.host_str() {
-            Some(host) => host.to_lowercase(),
-            None => return None,
-        }; 
-
-        match self.use_proxy_for_host(&host) {
+        match self.use_proxy_for_address(url.as_str()) {
             true => self.proxies.get(url.scheme()).map(|s| s.to_string().to_lowercase()),
             false => None,
         }
