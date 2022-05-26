@@ -26,32 +26,39 @@ unsafe fn lpwstr_null_to_string(wide: LPWSTR) -> Option<String> {
     OsString::from_wide(slice).into_string().ok()
 }
 
-// Bypass list is semi-colon or whitespace delimited
+// Bypass list is semi-colon delimited
 // The special value "<local>" means all local addresses
 fn parse_bypass_list(bypass_list: &str) -> Vec<String> {
-    bypass_list.split(&[' ', ';'][..])
+    bypass_list.split(';')
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(|s| s.to_string().to_lowercase())
+        .map(|s| s.to_lowercase())
         .collect()
 }
 
-// Proxy list is semi-colon or whitespace delimited, in this format:
-// ([<scheme>=][<scheme>"://"]<server>[":"<port>])
+// Proxy server list can be specified in three ways:
+//
+// 1. A semicolon-separated mapping of list scheme to url/port pairs, e.g., "http=proxy1:8080;ftp=ftpproxy"
+// 2. A single uri with optional port to use for all URLs, e.g., "proxy2:8080"
+// 3. The special "direct://" value, which will make all connections not use a proxy.
 fn parse_proxy_list(proxy_list: &str) -> HashMap<String, String> {
     let mut result = HashMap::new();
 
-    let proxies = proxy_list.split(&[' ', ';'][..])
+    if proxy_list == "direct://" {
+        return result;
+    }
+
+    let proxies = proxy_list.split(';')
         .map(|s| s.trim())
         .filter(|s| !s.is_empty());
 
     for proxy in proxies {
-        let split: Vec<&str> = proxy.split('=').collect();
+        let split: Vec<&str> = proxy.splitn(2, '=').collect();
 
         if split.len() == 1 {
-            result.insert("http".into(), split[0].into());
-        } else if split.len() == 2 {
-            result.insert(split[0].to_string().to_lowercase(), split[1].into());
+            result.insert("*".into(), split[0].into());
+        } else {
+            result.insert(split[0].to_lowercase(), split[1].into());
         }
     }
 
@@ -75,14 +82,14 @@ fn win_inet_get_autoconfig_type(connections: RegKey) -> AutoconfigType {
 
         // Format of DefaultConnectionSettings is a string of bytes
         // Only interested in byte 9 here which values mean:
-        //  09 when only 'Automatically detect settings' is enabled 
+        //  09 when only 'Automatically detect settings' is enabled
         //  03 when only 'Use a proxy server for your LAN' is enabled
         //  0B when both are enabled
         //  05 when only 'Use automatic configuration script' is enabled
         //  0D when 'Automatically detect settings' and 'Use automatic configuration script' are enabled
         //  07 when 'Use a proxy server for your LAN' and 'Use automatic configuration script' are enabled
-        //  0F when all the three are enabled. 
-        //  01 when none of them are enabled. 
+        //  0F when all the three are enabled.
+        //  01 when none of them are enabled.
         // Source https://superuser.com/questions/419696/in-windows-7-how-to-change-proxy-settings-from-command-line
         if bytes.len() > 8 {
             if (bytes[8] & (1 << 2)) == (1 << 2) {
@@ -188,7 +195,7 @@ fn win_http_get_default_config() -> Option<ProxyConfig> {
     if proxy_config.whitelist.contains("<local>") {
         proxy_config.exclude_simple = true;
     }
-    
+
     Some(proxy_config)
 }
 
@@ -218,23 +225,23 @@ mod tests {
 
     #[test]
     fn parse_exceptions_test() {
-        let bypass_list = "  <local>;.microsoft.com  ;  192.168.*.* 172.16.10.*";
+        let bypass_list = "  <local>;.microsoft.com  ;  192.168.*.*; 172.16.10.*";
         let parsed = parse_bypass_list(bypass_list);
         assert_eq!(parsed, vec!["<local>", ".microsoft.com", "192.168.*.*", "172.16.10.*"])
     }
-    
+
     #[test]
     fn parse_proxies_test() {
         let hm = parse_proxy_list("http=1.2.3.4:80");
         assert_eq!(1, hm.len());
         assert_eq!("1.2.3.4:80", hm.get("http").unwrap());
-    
+
         let hm = parse_proxy_list("1.2.3.4;https=http://8.8.8.8");
         assert_eq!(2, hm.len());
-        assert_eq!("1.2.3.4", hm.get("http").unwrap());
+        assert_eq!("1.2.3.4", hm.get("*").unwrap());
         assert_eq!("http://8.8.8.8", hm.get("https").unwrap());
-    
-        let hm = parse_proxy_list("http://1.2.3.4;https=8.8.8.8   http=9.8.7.6:123");
+
+        let hm = parse_proxy_list("http=1.2.3.4;https=8.8.8.8 ;  http=9.8.7.6:123");
         assert_eq!(2, hm.len());
         assert_eq!("9.8.7.6:123", hm.get("http").unwrap());
     }
