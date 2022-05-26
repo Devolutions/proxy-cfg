@@ -53,7 +53,7 @@ impl ProxyConfig {
                 let slice = &s[pos + 1..];
                 return slice.len() > 0 && host.ends_with(slice)
             }
-            false 
+            false
         }) { return false }
 
         true
@@ -61,7 +61,11 @@ impl ProxyConfig {
 
     pub fn get_proxy_for_url(&self, url: &Url) -> Option<String> {
         match self.use_proxy_for_address(url.as_str()) {
-            true => self.proxies.get(url.scheme()).map(|s| s.to_string().to_lowercase()),
+            true => self
+                .proxies
+                .get(url.scheme())
+                .or_else(|| self.proxies.get("*"))
+                .map(|s| s.to_lowercase()), // FIXME: URL is case sensitive
             false => None,
         }
     }
@@ -131,18 +135,18 @@ mod tests {
 
     #[test]
     fn test_get_proxy_for_url() {
-        let proxy_config = ProxyConfig { 
-            proxies: map!{ 
-                "http".into() => "1.1.1.1".into(), 
-                "https".into() => "2.2.2.2".into() 
+        let proxy_config = ProxyConfig {
+            proxies: map!{
+                "http".into() => "1.1.1.1".into(),
+                "https".into() => "2.2.2.2".into()
             },
             whitelist: vec![
-                "www.devolutions.net", 
-                "*.microsoft.com", 
+                "www.devolutions.net",
+                "*.microsoft.com",
                 "*apple.com"
             ].into_iter().map(|s| s.to_string()).collect(),
             exclude_simple: true,
-            ..Default::default() 
+            ..Default::default()
         };
 
         assert_eq!(proxy_config.get_proxy_for_url(&Url::parse("http://simpledomain").unwrap()), None);
