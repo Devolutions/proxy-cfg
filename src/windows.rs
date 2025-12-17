@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 
-use winapi::shared::minwindef::FALSE;
-use winapi::um::winhttp::{WINHTTP_ACCESS_TYPE_NAMED_PROXY, WINHTTP_PROXY_INFO, WinHttpGetDefaultProxyConfiguration};
-use winapi::um::winnt::LPWSTR;
+use windows_sys::Win32::Foundation::FALSE;
+use windows_sys::Win32::Networking::WinHttp::{WINHTTP_ACCESS_TYPE_NAMED_PROXY, WINHTTP_PROXY_INFO, WinHttpGetDefaultProxyConfiguration};
+use windows_sys::core::PWSTR;
 use winreg::RegKey;
 use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
-use super::{Error, ProxyConfig, Result};
+use super::{ProxyConfig, Result};
 
 const REG_POLICIES: &str = r"Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings";
 const REG_SETTINGS: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
@@ -21,13 +21,24 @@ enum AutoconfigType {
     None,
 }
 
-unsafe fn lpwstr_null_to_string(wide: LPWSTR) -> Option<String> {
+/// Converts a null-terminated wide string pointer to a Rust String.
+///
+/// # Safety
+///
+/// The caller must ensure that:
+/// - `wide` is either null or points to a valid, null-terminated wide string
+/// - The memory pointed to by `wide` remains valid for the duration of this call
+/// - The wide string is properly null-terminated
+unsafe fn lpwstr_null_to_string(wide: PWSTR) -> Option<String> {
     if wide.is_null() {
         return None;
     }
 
-    let len = (0..).take_while(|&i| *wide.offset(i) != 0).count();
-    let slice = std::slice::from_raw_parts(wide, len);
+    // SAFETY: Caller guarantees `wide` points to a valid, null-terminated wide string.
+    let len = (0..).take_while(|&i| unsafe { *wide.offset(i) != 0 }).count();
+    // SAFETY: We've calculated the length by finding the null terminator,
+    // and caller guarantees the pointer is valid for at least `len` elements.
+    let slice = unsafe { std::slice::from_raw_parts(wide, len) };
     OsString::from_wide(slice).into_string().ok()
 }
 
@@ -104,7 +115,7 @@ fn win_inet_get_autoconfig_type(connections: RegKey) -> AutoconfigType {
         }
     }
 
-    return AutoconfigType::None;
+    AutoconfigType::None
 }
 
 fn win_inet_get_proxy_config(internet_settings: RegKey) -> Option<ProxyConfig> {
@@ -140,10 +151,10 @@ fn win_inet_get_proxy_config(internet_settings: RegKey) -> Option<ProxyConfig> {
 }
 
 fn win_inet_get_current_user_config() -> Option<ProxyConfig> {
-    if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(REG_CONNECTIONS) {
-        if win_inet_get_autoconfig_type(key) != AutoconfigType::None {
-            return None;
-        }
+    if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(REG_CONNECTIONS)
+        && win_inet_get_autoconfig_type(key) != AutoconfigType::None
+    {
+        return None;
     }
 
     if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(REG_SETTINGS) {
@@ -154,10 +165,10 @@ fn win_inet_get_current_user_config() -> Option<ProxyConfig> {
 }
 
 fn win_inet_get_local_machine_config() -> Option<ProxyConfig> {
-    if let Ok(key) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(REG_CONNECTIONS) {
-        if win_inet_get_autoconfig_type(key) != AutoconfigType::None {
-            return None;
-        }
+    if let Ok(key) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(REG_CONNECTIONS)
+        && win_inet_get_autoconfig_type(key) != AutoconfigType::None
+    {
+        return None;
     }
 
     if let Ok(key) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(REG_SETTINGS) {
@@ -206,10 +217,10 @@ fn win_http_get_default_config() -> Option<ProxyConfig> {
 pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
     let win_inet_user_proxy = win_inet_get_current_user_config();
 
-    if !win_inet_is_per_user() || win_inet_user_proxy.is_none() {
-        if let Some(proxy_config) = win_inet_get_local_machine_config() {
-            return Ok(Some(proxy_config));
-        }
+    if (!win_inet_is_per_user() || win_inet_user_proxy.is_none())
+        && let Some(proxy_config) = win_inet_get_local_machine_config()
+    {
+        return Ok(Some(proxy_config));
     }
 
     if let Some(proxy_config) = win_inet_user_proxy {
