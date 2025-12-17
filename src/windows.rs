@@ -3,7 +3,9 @@ use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 
 use windows_sys::Win32::Foundation::FALSE;
-use windows_sys::Win32::Networking::WinHttp::{WINHTTP_ACCESS_TYPE_NAMED_PROXY, WINHTTP_PROXY_INFO, WinHttpGetDefaultProxyConfiguration};
+use windows_sys::Win32::Networking::WinHttp::{
+    WINHTTP_ACCESS_TYPE_NAMED_PROXY, WINHTTP_PROXY_INFO, WinHttpGetDefaultProxyConfiguration,
+};
 use windows_sys::core::PWSTR;
 use winreg::RegKey;
 use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
