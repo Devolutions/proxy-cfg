@@ -69,7 +69,7 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
         // TODO kSCPropNetProxiesFTPPassive
     }
 
-    if proxy_config.proxies.len() == 0 {
+    if proxy_config.proxies.is_empty() {
         return Ok(None);
     }
 
