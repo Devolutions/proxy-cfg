@@ -1,9 +1,16 @@
-use super::*;
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
-use winapi::{shared::minwindef::*, um::winhttp::*, um::winnt::LPWSTR};
+
+use windows_sys::Win32::Foundation::FALSE;
+use windows_sys::Win32::Networking::WinHttp::{
+    WINHTTP_ACCESS_TYPE_NAMED_PROXY, WINHTTP_PROXY_INFO, WinHttpGetDefaultProxyConfiguration,
+};
+use windows_sys::core::PWSTR;
 use winreg::RegKey;
-use winreg::enums::*;
+use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+
+use super::{ProxyConfig, Result};
 
 const REG_POLICIES: &str = r"Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings";
 const REG_SETTINGS: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
@@ -16,20 +23,37 @@ enum AutoconfigType {
     None,
 }
 
-unsafe fn lpwstr_null_to_string(wide: LPWSTR) -> Option<String> {
+/// Converts a null-terminated wide string pointer to a Rust String.
+///
+/// # Safety
+///
+/// The caller must ensure that:
+/// - `wide` is either null or points to a valid, null-terminated wide string
+/// - The memory pointed to by `wide` remains valid for the duration of this call
+/// - The wide string is properly null-terminated
+unsafe fn pwstr_null_to_string(wide: PWSTR) -> Option<String> {
     if wide.is_null() {
-        return None
+        return None;
     }
 
-    let len = (0..).take_while(|&i| *wide.offset(i) != 0).count();
-    let slice = std::slice::from_raw_parts(wide, len);
+    let len = (0..)
+        .take_while(|&i| {
+            // SAFETY: Caller guarantees `wide` points to valid memory for offset operations.
+            let ptr = unsafe { wide.offset(i) };
+            // SAFETY: Caller guarantees the pointer is valid for reads until null terminator.
+            unsafe { *ptr != 0 }
+        })
+        .count();
+    // SAFETY: Caller guarantees the pointer is valid for at least `len` elements (up to null terminator).
+    let slice = unsafe { std::slice::from_raw_parts(wide, len) };
     OsString::from_wide(slice).into_string().ok()
 }
 
-// Bypass list is semi-colon delimited
-// The special value "<local>" means all local addresses
+// Bypass list is semi-colon delimited.
+// The special value "<local>" means all local addresses.
 fn parse_bypass_list(bypass_list: &str) -> Vec<String> {
-    bypass_list.split(';')
+    bypass_list
+        .split(';')
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_lowercase())
@@ -38,8 +62,8 @@ fn parse_bypass_list(bypass_list: &str) -> Vec<String> {
 
 // Proxy server list can be specified in three ways:
 //
-// 1. A semicolon-separated mapping of list scheme to url/port pairs, e.g., "http=proxy1:8080;ftp=ftpproxy"
-// 2. A single uri with optional port to use for all URLs, e.g., "proxy2:8080"
+// 1. A semicolon-separated mapping of list scheme to url/port pairs, e.g., "http=proxy1:8080;ftp=ftpproxy".
+// 2. A single URI with optional port to use for all URLs, e.g., "proxy2:8080".
 // 3. The special "direct://" value, which will make all connections not use a proxy.
 fn parse_proxy_list(proxy_list: &str) -> HashMap<String, String> {
     let mut result = HashMap::new();
@@ -48,9 +72,7 @@ fn parse_proxy_list(proxy_list: &str) -> HashMap<String, String> {
         return result;
     }
 
-    let proxies = proxy_list.split(';')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
+    let proxies = proxy_list.split(';').map(|s| s.trim()).filter(|s| !s.is_empty());
 
     for proxy in proxies {
         let split: Vec<&str> = proxy.splitn(2, '=').collect();
@@ -80,17 +102,17 @@ fn win_inet_get_autoconfig_type(connections: RegKey) -> AutoconfigType {
     if let Ok(default_connection_settings) = connections.get_raw_value("DefaultConnectionSettings") {
         let bytes = default_connection_settings.bytes;
 
-        // Format of DefaultConnectionSettings is a string of bytes
+        // Format of DefaultConnectionSettings is a string of bytes.
         // Only interested in byte 9 here which values mean:
-        //  09 when only 'Automatically detect settings' is enabled
-        //  03 when only 'Use a proxy server for your LAN' is enabled
-        //  0B when both are enabled
-        //  05 when only 'Use automatic configuration script' is enabled
-        //  0D when 'Automatically detect settings' and 'Use automatic configuration script' are enabled
-        //  07 when 'Use a proxy server for your LAN' and 'Use automatic configuration script' are enabled
+        //  09 when only 'Automatically detect settings' is enabled.
+        //  03 when only 'Use a proxy server for your LAN' is enabled.
+        //  0B when both are enabled.
+        //  05 when only 'Use automatic configuration script' is enabled.
+        //  0D when 'Automatically detect settings' and 'Use automatic configuration script' are enabled.
+        //  07 when 'Use a proxy server for your LAN' and 'Use automatic configuration script' are enabled.
         //  0F when all the three are enabled.
         //  01 when none of them are enabled.
-        // Source https://superuser.com/questions/419696/in-windows-7-how-to-change-proxy-settings-from-command-line
+        // Source: <https://superuser.com/questions/419696/in-windows-7-how-to-change-proxy-settings-from-command-line>
         if bytes.len() > 8 {
             if (bytes[8] & (1 << 2)) == (1 << 2) {
                 return AutoconfigType::Pac;
@@ -100,12 +122,12 @@ fn win_inet_get_autoconfig_type(connections: RegKey) -> AutoconfigType {
         }
     }
 
-    return AutoconfigType::None;
+    AutoconfigType::None
 }
 
 fn win_inet_get_proxy_config(internet_settings: RegKey) -> Option<ProxyConfig> {
     if internet_settings.get_value("ProxyEnable").unwrap_or(0u32) != 1 {
-        return None
+        return None;
     }
 
     if let Ok(proxy_server) = internet_settings.get_value("ProxyServer") {
@@ -113,7 +135,7 @@ fn win_inet_get_proxy_config(internet_settings: RegKey) -> Option<ProxyConfig> {
         let proxy_list = parse_proxy_list(&proxy_server);
 
         if proxy_list.is_empty() {
-            return None
+            return None;
         }
 
         let mut proxy_config: ProxyConfig = Default::default();
@@ -129,63 +151,66 @@ fn win_inet_get_proxy_config(internet_settings: RegKey) -> Option<ProxyConfig> {
             proxy_config.exclude_simple = true;
         }
 
-        return Some(proxy_config)
+        return Some(proxy_config);
     }
 
     None
 }
 
 fn win_inet_get_current_user_config() -> Option<ProxyConfig> {
-    if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(REG_CONNECTIONS) {
-        if win_inet_get_autoconfig_type(key) != AutoconfigType::None {
-            return None
-        }
+    if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(REG_CONNECTIONS)
+        && win_inet_get_autoconfig_type(key) != AutoconfigType::None
+    {
+        return None;
     }
 
     if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(REG_SETTINGS) {
-        return win_inet_get_proxy_config(key)
+        return win_inet_get_proxy_config(key);
     }
 
     None
 }
 
 fn win_inet_get_local_machine_config() -> Option<ProxyConfig> {
-    if let Ok(key) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(REG_CONNECTIONS) {
-        if win_inet_get_autoconfig_type(key) != AutoconfigType::None {
-            return None
-        }
+    if let Ok(key) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(REG_CONNECTIONS)
+        && win_inet_get_autoconfig_type(key) != AutoconfigType::None
+    {
+        return None;
     }
 
     if let Ok(key) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(REG_SETTINGS) {
-        return win_inet_get_proxy_config(key)
+        return win_inet_get_proxy_config(key);
     }
 
     None
 }
 
 fn win_http_get_default_config() -> Option<ProxyConfig> {
-    let mut proxy_info: WINHTTP_PROXY_INFO;
-
-    let result = unsafe {
-        proxy_info = std::mem::zeroed();
-        WinHttpGetDefaultProxyConfiguration(&mut proxy_info)
-     };
+    // SAFETY: WINHTTP_PROXY_INFO is a C struct that can be safely zero-initialized.
+    let mut proxy_info: WINHTTP_PROXY_INFO = unsafe { std::mem::zeroed() };
+    // SAFETY: WinHttpGetDefaultProxyConfiguration is a Windows API function that accepts
+    // a valid mutable pointer to WINHTTP_PROXY_INFO.
+    let result = unsafe { WinHttpGetDefaultProxyConfiguration(&mut proxy_info) };
 
     if result == FALSE || proxy_info.dwAccessType != WINHTTP_ACCESS_TYPE_NAMED_PROXY {
-        return None
+        return None;
     }
 
-    let proxy_server = unsafe { lpwstr_null_to_string(proxy_info.lpszProxy) };
+    // SAFETY: lpszProxy comes from the Windows API and is either null or points to a valid
+    // null-terminated wide string that remains valid for the duration of this function.
+    let proxy_server = unsafe { pwstr_null_to_string(proxy_info.lpszProxy) };
     let proxy_list = parse_proxy_list(&proxy_server.unwrap_or_default());
 
     if proxy_list.is_empty() {
-        return None
+        return None;
     }
 
     let mut proxy_config: ProxyConfig = Default::default();
     proxy_config.proxies.extend(proxy_list);
 
-    let proxy_bypass = unsafe { lpwstr_null_to_string(proxy_info.lpszProxyBypass) };
+    // SAFETY: lpszProxyBypass comes from the Windows API and is either null or points to a valid
+    // null-terminated wide string that remains valid for the duration of this function.
+    let proxy_bypass = unsafe { pwstr_null_to_string(proxy_info.lpszProxyBypass) };
 
     if let Some(proxy_bypass) = proxy_bypass {
         let bypass_list = parse_bypass_list(&proxy_bypass);
@@ -202,18 +227,18 @@ fn win_http_get_default_config() -> Option<ProxyConfig> {
 pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
     let win_inet_user_proxy = win_inet_get_current_user_config();
 
-    if !win_inet_is_per_user() || win_inet_user_proxy.is_none() {
-        if let Some(proxy_config) = win_inet_get_local_machine_config() {
-            return Ok(Some(proxy_config))
-        }
+    if (!win_inet_is_per_user() || win_inet_user_proxy.is_none())
+        && let Some(proxy_config) = win_inet_get_local_machine_config()
+    {
+        return Ok(Some(proxy_config));
     }
 
     if let Some(proxy_config) = win_inet_user_proxy {
-        return Ok(Some(proxy_config))
+        return Ok(Some(proxy_config));
     }
 
     if let Some(proxy_config) = win_http_get_default_config() {
-        return Ok(Some(proxy_config))
+        return Ok(Some(proxy_config));
     }
 
     Ok(None)
@@ -221,7 +246,7 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{parse_bypass_list, parse_proxy_list};
 
     #[test]
     fn parse_exceptions_test() {
@@ -234,15 +259,15 @@ mod tests {
     fn parse_proxies_test() {
         let hm = parse_proxy_list("http=1.2.3.4:80");
         assert_eq!(1, hm.len());
-        assert_eq!("1.2.3.4:80", hm.get("http").unwrap());
+        assert_eq!("1.2.3.4:80", &hm["http"]);
 
         let hm = parse_proxy_list("1.2.3.4;https=http://8.8.8.8");
         assert_eq!(2, hm.len());
-        assert_eq!("1.2.3.4", hm.get("*").unwrap());
-        assert_eq!("http://8.8.8.8", hm.get("https").unwrap());
+        assert_eq!("1.2.3.4", &hm["*"]);
+        assert_eq!("http://8.8.8.8", &hm["https"]);
 
         let hm = parse_proxy_list("http=1.2.3.4;https=8.8.8.8 ;  http=9.8.7.6:123");
         assert_eq!(2, hm.len());
-        assert_eq!("9.8.7.6:123", hm.get("http").unwrap());
+        assert_eq!("9.8.7.6:123", &hm["http"]);
     }
 }

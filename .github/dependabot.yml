@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    assignees:
+      - "CBenoit"
+    open-pull-requests-limit: 3
+    groups:
+      windows:
+        patterns:
+          - "windows*"
+          - "winreg"
+      patch:
+        dependency-type: "production"
+        update-types:
+          - "patch"
+      dev:
+        dependency-type: "development"

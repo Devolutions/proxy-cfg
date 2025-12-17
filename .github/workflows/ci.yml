@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+env:
+  # Disable incremental compilation. CI builds are often closer to from-scratch builds, as changes
+  # are typically bigger than from a local edit-compile cycle.
+  # Incremental compilation also significantly increases the amount of IO and the size of ./target
+  # folder, which makes caching less effective.
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: short
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  # Cache should never take more than a few seconds to get downloaded.
+  # If it does, let's just rebuild from scratch instead of hanging "forever".
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1
+  # Disabling debug info so compilation is faster and ./target folder is smaller.
+  CARGO_PROFILE_DEV_DEBUG: 0
+
+jobs:
+  formatting:
+    name: Check formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+  checks:
+    name: Checks [${{ matrix.os }}]
+    runs-on: ${{ matrix.runner }}
+    needs: formatting
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows, linux, macos]
+        include:
+          - os: windows
+            runner: windows-latest
+          - os: linux
+            runner: ubuntu-latest
+          - os: macos
+            runner: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.8.2
+
+      - name: Lints
+        run: cargo clippy --workspace --all-features --tests -v -- -Dwarnings
+
+      - name: Tests
+        run: cargo test --workspace -v
+
+  success:
+    name: Success
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs:
+      - formatting
+      - checks
+
+    steps:
+      - name: CI succeeded
+        id: succeeded
+        if: ${{ !contains(needs.*.result, 'failure') }}
+        run: exit 0
+
+      - name: CI failed
+        if: ${{ steps.succeeded.outcome == 'skipped' }}
+        run: exit 1
