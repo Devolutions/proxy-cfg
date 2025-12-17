@@ -1,7 +1,7 @@
 use std::ptr;
 
 use core_foundation::array::CFArray;
-use core_foundation::base::CFType;
+use core_foundation::base::{CFType, TCFType, TCFTypeRef};
 use core_foundation::dictionary::CFDictionary;
 use core_foundation::number::CFNumber;
 use core_foundation::string::{CFString, CFStringRef};
@@ -78,14 +78,14 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
     }
 
     if let Some(exceptions_list) = get_array_value(&proxies, "ExceptionsList") {
-        let cf_strings = exceptions_list
+        let cf_strings: Vec<CFString> = exceptions_list
             .iter()
             .map(|ptr| unsafe { CFString::wrap_under_get_rule(CFStringRef::from_void_ptr(*ptr)) })
-            .collect::<Vec<_>>();
+            .collect();
 
         proxy_config
             .whitelist
-            .extend(cf_strings.iter().map(|s| s.to_string().to_lowercase()));
+            .extend(cf_strings.iter().map(|s: &CFString| s.to_string().to_lowercase()));
     }
 
     Ok(Some(proxy_config))
