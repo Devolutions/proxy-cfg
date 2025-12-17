@@ -31,6 +31,7 @@ fn get_i32_value(dictionary: &CFDictionary<CFString, CFType>, key: &'static str)
 }
 
 pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
+    // SAFETY: SCDynamicStoreCopyProxies is a system API that returns a CFDictionary reference or null.
     let proxies_ref = unsafe { dynamic_store_copy_specific::SCDynamicStoreCopyProxies(ptr::null()) };
 
     let mut proxy_config: ProxyConfig = Default::default();
@@ -39,6 +40,7 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
         return Ok(None);
     }
 
+    // SAFETY: proxies_ref is non-null (checked above) and was created by SCDynamicStoreCopyProxies with "Create" semantics.
     let proxies: CFDictionary<CFString, CFType> = unsafe { CFDictionary::wrap_under_create_rule(proxies_ref) };
 
     if get_i32_value(&proxies, "HTTPEnable").unwrap_or(0) == 1 {
@@ -80,7 +82,12 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
     if let Some(exceptions_list) = get_array_value(&proxies, "ExceptionsList") {
         let cf_strings: Vec<CFString> = exceptions_list
             .iter()
-            .map(|ptr| unsafe { CFString::wrap_under_get_rule(CFStringRef::from_void_ptr(*ptr)) })
+            .map(|ptr| {
+                // SAFETY: ptr comes from CFArray iterator and points to a valid CFString object.
+                let string_ref = unsafe { CFStringRef::from_void_ptr(*ptr) };
+                // SAFETY: string_ref is a valid CFStringRef from the array, using "Get" rule (non-owning reference).
+                unsafe { CFString::wrap_under_get_rule(string_ref) }
+            })
             .collect();
 
         proxy_config
