@@ -53,7 +53,7 @@ impl ProxyConfig {
         // TODO: Wildcard matches on IP address, e.g. 192.168.*.*
         // TODO: Subnet matches on IP address, e.g. 192.168.16.0/24
         if self.whitelist.iter().any(|pattern| {
-            if let Some(pos) = pattern.find('*') {
+            if let Some(pos) = pattern.rfind('*') {
                 let suffix = &pattern[pos + 1..];
                 !suffix.is_empty() && host.ends_with(suffix)
             } else {
@@ -115,6 +115,8 @@ pub fn get_proxy_config() -> Result<Option<ProxyConfig>> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use url::Url;
 
     use super::{ProxyConfig, get_proxy_config};
@@ -152,7 +154,7 @@ mod tests {
             },
             whitelist: vec!["www.devolutions.net", "*.microsoft.com", "*apple.com"]
                 .into_iter()
-                .map(|s| s.to_string())
+                .map(|s| s.to_owned())
                 .collect(),
             exclude_simple: true,
             ..Default::default()
@@ -186,5 +188,123 @@ mod tests {
             proxy_config.get_proxy_for_url(&Url::parse("https://test.apple.net").unwrap()),
             Some("2.2.2.2".into())
         );
+    }
+
+    #[test]
+    fn test_wildcard_matching_edge_cases() {
+        let proxy_config = ProxyConfig {
+            proxies: map! {
+                "http".into() => "1.1.1.1".into()
+            },
+            whitelist: vec![
+                "*test*.com",        // Multiple asterisks.
+                "*.sub.example.com", // Wildcard at start.
+                "*",                 // Single asterisk (should match everything after it, which is empty).
+                "foo*",              // Wildcard at end.
+                "*.org",             // Simple wildcard domain.
+            ]
+            .into_iter()
+            .map(|s| s.to_owned())
+            .collect(),
+            exclude_simple: false,
+            ..Default::default()
+        };
+
+        // Test multiple asterisks: should use the last asterisk and match ".com" suffix.
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://example.com").unwrap()),
+            None
+        );
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://whatever.com").unwrap()),
+            None
+        );
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://notmatching.net").unwrap()),
+            Some("1.1.1.1".into())
+        );
+
+        // Test *.sub.example.com pattern.
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://foo.sub.example.com").unwrap()),
+            None
+        );
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://sub.example.com").unwrap()),
+            None
+        );
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://example.com").unwrap()),
+            None // Already matched by "*test*.com" -> "*.com".
+        );
+
+        // Test single asterisk with nothing after it (empty suffix - should not match).
+        // Since suffix is empty, !suffix.is_empty() is false, so this pattern shouldn't bypass.
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://anything.xyz").unwrap()),
+            Some("1.1.1.1".into())
+        );
+
+        // Test wildcard at end "foo*" - matches hosts ending with empty string after the *.
+        // rfind('*') finds the asterisk, suffix is "", !suffix.is_empty() is false.
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://foobar.xyz").unwrap()),
+            Some("1.1.1.1".into())
+        );
+
+        // Test *.org pattern.
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://example.org").unwrap()),
+            None
+        );
+        assert_eq!(
+            proxy_config.get_proxy_for_url(&Url::parse("http://test.example.org").unwrap()),
+            None
+        );
+    }
+
+    #[test]
+    fn test_use_proxy_for_address_case_insensitivity() {
+        let proxy_config = ProxyConfig {
+            proxies: map! {
+                "http".into() => "1.1.1.1".into()
+            },
+            // Whitelist patterns are normalized to lowercase (as done by all platform-specific code).
+            whitelist: vec!["*.example.com", "test.local"]
+                .into_iter()
+                .map(|s| s.to_owned())
+                .collect(),
+            exclude_simple: false,
+            ..Default::default()
+        };
+
+        // Hostnames should be matched case-insensitively (normalized to lowercase internally).
+        assert!(!proxy_config.use_proxy_for_address("http://sub.example.com"));
+        assert!(!proxy_config.use_proxy_for_address("http://SUB.EXAMPLE.COM"));
+        assert!(!proxy_config.use_proxy_for_address("http://Sub.Example.Com"));
+        assert!(!proxy_config.use_proxy_for_address("http://test.local"));
+        assert!(!proxy_config.use_proxy_for_address("http://TEST.LOCAL"));
+        assert!(!proxy_config.use_proxy_for_address("http://Test.Local"));
+        assert!(proxy_config.use_proxy_for_address("http://other.domain"));
+    }
+
+    #[test]
+    fn test_exclude_simple_hostnames() {
+        let proxy_config = ProxyConfig {
+            proxies: map! {
+                "http".into() => "1.1.1.1".into()
+            },
+            whitelist: HashSet::new(),
+            exclude_simple: true,
+            ..Default::default()
+        };
+
+        // Simple hostnames (no dots) should bypass proxy.
+        assert!(!proxy_config.use_proxy_for_address("http://localhost"));
+        assert!(!proxy_config.use_proxy_for_address("http://intranet"));
+
+        // Hostnames with dots should use proxy.
+        assert!(proxy_config.use_proxy_for_address("http://example.com"));
+        assert!(proxy_config.use_proxy_for_address("http://sub.example.com"));
     }
 }

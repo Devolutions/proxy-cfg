@@ -18,7 +18,7 @@ env:
   RUSTUP_MAX_RETRIES: 10
   RUST_BACKTRACE: short
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
-  # Cache should never takes more than a few seconds to get downloaded.
+  # Cache should never take more than a few seconds to get downloaded.
   # If it does, let's just rebuild from scratch instead of hanging "forever".
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1
   # Disabling debug info so compilation is faster and ./target folder is smaller.

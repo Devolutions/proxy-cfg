@@ -1,1 +1,7 @@
+msrv = "1.92"
+semicolon-outside-block-ignore-multiline = true
+accept-comment-above-statement = true
+accept-comment-above-attributes = true
+allow-panic-in-tests = true
+allow-unwrap-in-tests = true
 too-many-lines-threshold = 130

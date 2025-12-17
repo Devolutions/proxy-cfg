@@ -1,3 +1,5 @@
+#![allow(clippy::print_stdout, clippy::unwrap_used, unused_crate_dependencies)]
+
 use std::{env, process};
 
 use proxy_cfg::{ProxyConfig, get_proxy_config};

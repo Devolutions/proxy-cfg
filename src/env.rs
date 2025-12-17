@@ -13,11 +13,11 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
             if scheme == "no" {
                 for url in value.split(",").map(|s| s.trim()) {
                     if !url.is_empty() {
-                        proxy_config.whitelist.insert(url.to_string().to_lowercase());
+                        proxy_config.whitelist.insert(url.to_owned().to_lowercase());
                     }
                 }
             } else {
-                proxy_config.proxies.insert(scheme.to_string().to_lowercase(), value);
+                proxy_config.proxies.insert(scheme.to_owned().to_lowercase(), value);
             }
         }
     }
@@ -43,6 +43,7 @@ mod tests {
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
+    #[allow(clippy::multiple_unsafe_ops_per_block, reason = "same rationale for all operations")]
     fn test_env_basic() {
         let _guard = ENV_MUTEX.lock().unwrap();
 
@@ -52,12 +53,12 @@ mod tests {
             env::set_var("HTTPS_PROXY", "candybox2.github.io");
             env::set_var("FTP_PROXY", "http://9-eyes.com");
             env::set_var("NO_PROXY", "");
-        }
+        };
 
         let mut proxies = HashMap::new();
-        proxies.insert("http".into(), "127.0.0.1".to_string());
-        proxies.insert("https".into(), "candybox2.github.io".to_string());
-        proxies.insert("ftp".into(), "http://9-eyes.com".to_string());
+        proxies.insert("http".into(), "127.0.0.1".to_owned());
+        proxies.insert("https".into(), "candybox2.github.io".to_owned());
+        proxies.insert("ftp".into(), "http://9-eyes.com".to_owned());
 
         let env_var_proxies = get_proxy_config().unwrap().unwrap().proxies;
         if env_var_proxies.len() != 3 {
@@ -71,6 +72,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::multiple_unsafe_ops_per_block, reason = "same rationale for all operations")]
     fn test_env_whitelist() {
         let _guard = ENV_MUTEX.lock().unwrap();
 
@@ -80,7 +82,7 @@ mod tests {
             env::set_var("HTTPS_PROXY", "candybox2.github.io");
             env::set_var("FTP_PROXY", "http://9-eyes.com");
             env::set_var("NO_PROXY", "google.com, 192.168.0.1, localhost, https://github.com/");
-        }
+        };
 
         let proxy_config = get_proxy_config().unwrap().unwrap();
 

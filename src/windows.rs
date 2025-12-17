@@ -31,7 +31,7 @@ enum AutoconfigType {
 /// - `wide` is either null or points to a valid, null-terminated wide string
 /// - The memory pointed to by `wide` remains valid for the duration of this call
 /// - The wide string is properly null-terminated
-unsafe fn lpwstr_null_to_string(wide: PWSTR) -> Option<String> {
+unsafe fn pwstr_null_to_string(wide: PWSTR) -> Option<String> {
     if wide.is_null() {
         return None;
     }
@@ -44,8 +44,8 @@ unsafe fn lpwstr_null_to_string(wide: PWSTR) -> Option<String> {
     OsString::from_wide(slice).into_string().ok()
 }
 
-// Bypass list is semi-colon delimited
-// The special value "<local>" means all local addresses
+// Bypass list is semi-colon delimited.
+// The special value "<local>" means all local addresses.
 fn parse_bypass_list(bypass_list: &str) -> Vec<String> {
     bypass_list
         .split(';')
@@ -57,8 +57,8 @@ fn parse_bypass_list(bypass_list: &str) -> Vec<String> {
 
 // Proxy server list can be specified in three ways:
 //
-// 1. A semicolon-separated mapping of list scheme to url/port pairs, e.g., "http=proxy1:8080;ftp=ftpproxy"
-// 2. A single uri with optional port to use for all URLs, e.g., "proxy2:8080"
+// 1. A semicolon-separated mapping of list scheme to url/port pairs, e.g., "http=proxy1:8080;ftp=ftpproxy".
+// 2. A single URI with optional port to use for all URLs, e.g., "proxy2:8080".
 // 3. The special "direct://" value, which will make all connections not use a proxy.
 fn parse_proxy_list(proxy_list: &str) -> HashMap<String, String> {
     let mut result = HashMap::new();
@@ -97,17 +97,17 @@ fn win_inet_get_autoconfig_type(connections: RegKey) -> AutoconfigType {
     if let Ok(default_connection_settings) = connections.get_raw_value("DefaultConnectionSettings") {
         let bytes = default_connection_settings.bytes;
 
-        // Format of DefaultConnectionSettings is a string of bytes
+        // Format of DefaultConnectionSettings is a string of bytes.
         // Only interested in byte 9 here which values mean:
-        //  09 when only 'Automatically detect settings' is enabled
-        //  03 when only 'Use a proxy server for your LAN' is enabled
-        //  0B when both are enabled
-        //  05 when only 'Use automatic configuration script' is enabled
-        //  0D when 'Automatically detect settings' and 'Use automatic configuration script' are enabled
-        //  07 when 'Use a proxy server for your LAN' and 'Use automatic configuration script' are enabled
+        //  09 when only 'Automatically detect settings' is enabled.
+        //  03 when only 'Use a proxy server for your LAN' is enabled.
+        //  0B when both are enabled.
+        //  05 when only 'Use automatic configuration script' is enabled.
+        //  0D when 'Automatically detect settings' and 'Use automatic configuration script' are enabled.
+        //  07 when 'Use a proxy server for your LAN' and 'Use automatic configuration script' are enabled.
         //  0F when all the three are enabled.
         //  01 when none of them are enabled.
-        // Source https://superuser.com/questions/419696/in-windows-7-how-to-change-proxy-settings-from-command-line
+        // Source: <https://superuser.com/questions/419696/in-windows-7-how-to-change-proxy-settings-from-command-line>
         if bytes.len() > 8 {
             if (bytes[8] & (1 << 2)) == (1 << 2) {
                 return AutoconfigType::Pac;
@@ -192,7 +192,7 @@ fn win_http_get_default_config() -> Option<ProxyConfig> {
         return None;
     }
 
-    let proxy_server = unsafe { lpwstr_null_to_string(proxy_info.lpszProxy) };
+    let proxy_server = unsafe { pwstr_null_to_string(proxy_info.lpszProxy) };
     let proxy_list = parse_proxy_list(&proxy_server.unwrap_or_default());
 
     if proxy_list.is_empty() {
@@ -202,7 +202,7 @@ fn win_http_get_default_config() -> Option<ProxyConfig> {
     let mut proxy_config: ProxyConfig = Default::default();
     proxy_config.proxies.extend(proxy_list);
 
-    let proxy_bypass = unsafe { lpwstr_null_to_string(proxy_info.lpszProxyBypass) };
+    let proxy_bypass = unsafe { pwstr_null_to_string(proxy_info.lpszProxyBypass) };
 
     if let Some(proxy_bypass) = proxy_bypass {
         let bypass_list = parse_bypass_list(&proxy_bypass);

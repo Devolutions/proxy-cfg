@@ -66,7 +66,7 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
         }
 
         proxy_config.proxies.insert("ftp".into(), url);
-        // TODO kSCPropNetProxiesFTPPassive
+        // TODO: kSCPropNetProxiesFTPPassive.
     }
 
     if proxy_config.proxies.is_empty() {
@@ -85,7 +85,7 @@ pub(crate) fn get_proxy_config() -> Result<Option<ProxyConfig>> {
 
         proxy_config
             .whitelist
-            .extend(cf_strings.iter().map(|s: &CFString| s.to_string().to_lowercase()));
+            .extend(cf_strings.iter().map(|s| s.to_string().to_lowercase()));
     }
 
     Ok(Some(proxy_config))
