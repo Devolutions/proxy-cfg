@@ -36,10 +36,15 @@ unsafe fn pwstr_null_to_string(wide: PWSTR) -> Option<String> {
         return None;
     }
 
-    // SAFETY: Caller guarantees `wide` points to a valid, null-terminated wide string.
-    let len = (0..).take_while(|&i| unsafe { *wide.offset(i) != 0 }).count();
-    // SAFETY: We've calculated the length by finding the null terminator,
-    // and caller guarantees the pointer is valid for at least `len` elements.
+    let len = (0..)
+        .take_while(|&i| {
+            // SAFETY: Caller guarantees `wide` points to valid memory for offset operations.
+            let ptr = unsafe { wide.offset(i) };
+            // SAFETY: Caller guarantees the pointer is valid for reads until null terminator.
+            unsafe { *ptr != 0 }
+        })
+        .count();
+    // SAFETY: Caller guarantees the pointer is valid for at least `len` elements (up to null terminator).
     let slice = unsafe { std::slice::from_raw_parts(wide, len) };
     OsString::from_wide(slice).into_string().ok()
 }
@@ -181,17 +186,18 @@ fn win_inet_get_local_machine_config() -> Option<ProxyConfig> {
 }
 
 fn win_http_get_default_config() -> Option<ProxyConfig> {
-    let mut proxy_info: WINHTTP_PROXY_INFO;
-
-    let result = unsafe {
-        proxy_info = std::mem::zeroed();
-        WinHttpGetDefaultProxyConfiguration(&mut proxy_info)
-    };
+    // SAFETY: WINHTTP_PROXY_INFO is a C struct that can be safely zero-initialized.
+    let mut proxy_info: WINHTTP_PROXY_INFO = unsafe { std::mem::zeroed() };
+    // SAFETY: WinHttpGetDefaultProxyConfiguration is a Windows API function that accepts
+    // a valid mutable pointer to WINHTTP_PROXY_INFO.
+    let result = unsafe { WinHttpGetDefaultProxyConfiguration(&mut proxy_info) };
 
     if result == FALSE || proxy_info.dwAccessType != WINHTTP_ACCESS_TYPE_NAMED_PROXY {
         return None;
     }
 
+    // SAFETY: lpszProxy comes from the Windows API and is either null or points to a valid
+    // null-terminated wide string that remains valid for the duration of this function.
     let proxy_server = unsafe { pwstr_null_to_string(proxy_info.lpszProxy) };
     let proxy_list = parse_proxy_list(&proxy_server.unwrap_or_default());
 
@@ -202,6 +208,8 @@ fn win_http_get_default_config() -> Option<ProxyConfig> {
     let mut proxy_config: ProxyConfig = Default::default();
     proxy_config.proxies.extend(proxy_list);
 
+    // SAFETY: lpszProxyBypass comes from the Windows API and is either null or points to a valid
+    // null-terminated wide string that remains valid for the duration of this function.
     let proxy_bypass = unsafe { pwstr_null_to_string(proxy_info.lpszProxyBypass) };
 
     if let Some(proxy_bypass) = proxy_bypass {
@@ -251,15 +259,15 @@ mod tests {
     fn parse_proxies_test() {
         let hm = parse_proxy_list("http=1.2.3.4:80");
         assert_eq!(1, hm.len());
-        assert_eq!("1.2.3.4:80", hm.get("http").unwrap());
+        assert_eq!("1.2.3.4:80", &hm["http"]);
 
         let hm = parse_proxy_list("1.2.3.4;https=http://8.8.8.8");
         assert_eq!(2, hm.len());
-        assert_eq!("1.2.3.4", hm.get("*").unwrap());
-        assert_eq!("http://8.8.8.8", hm.get("https").unwrap());
+        assert_eq!("1.2.3.4", &hm["*"]);
+        assert_eq!("http://8.8.8.8", &hm["https"]);
 
         let hm = parse_proxy_list("http=1.2.3.4;https=8.8.8.8 ;  http=9.8.7.6:123");
         assert_eq!(2, hm.len());
-        assert_eq!("9.8.7.6:123", hm.get("http").unwrap());
+        assert_eq!("9.8.7.6:123", &hm["http"]);
     }
 }
