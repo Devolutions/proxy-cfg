@@ -1,6 +1,6 @@
 [package]
 name = "proxy_cfg"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 authors = ["mattico8@gmail.com", "rmarkiewicz@devolutions.net" ]
 categories = ["network-programming", "os"]
