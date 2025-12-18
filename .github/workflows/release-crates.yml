@@ -1,9 +1,5 @@
 name: Release crates
 
-permissions:
-  pull-requests: write
-  contents: write
-
 on:
   workflow_dispatch:
   push:
@@ -38,9 +34,11 @@ jobs:
   # Release unpublished packages.
   release:
     name: Release crates
+    environment: cratesio-publish
     runs-on: ubuntu-latest
     permissions:
       id-token: write
+      contents: write
 
     steps:
       - name: Checkout repository
