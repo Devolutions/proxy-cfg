@@ -58,7 +58,7 @@ jobs:
         uses: Swatinem/rust-cache@v2.8.2
 
       - name: Lints
-        run: cargo clippy --workspace --all-features --tests -v -- -Dwarnings
+        run: cargo clippy --workspace --all-features --tests --locked -v -- -Dwarnings
 
       - name: Tests
         run: cargo test --workspace -v
